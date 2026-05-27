@@ -14,6 +14,7 @@ from database import (
     base64_to_bytes,
 )
 from kra_database import load_kra_pattern_db, save_kra_pattern_db
+from kboat_database import load_kboat_pattern_db, save_kboat_pattern_db
 from keirin_predictor import predict_from_popularity
 
 
@@ -189,11 +190,63 @@ def show_kra_field_prediction():
     st.caption(f"예측 방식: {result['method']} | 정확 빈도: {result['match_count']}건")
 
 
+def _parse_kboat_popularity_input(text: str):
+    values = text.replace(" ", ",").split(",")
+    values = [value.strip() for value in values if value.strip()]
+    if len(values) != 5:
+        raise ValueError("인기순위 선수 번호 5개를 입력하세요. 예: 1,3,2,5,6")
+    parsed = [int(value) for value in values]
+    if len(set(parsed)) != 5:
+        raise ValueError("같은 선수 번호를 중복 입력할 수 없습니다.")
+    if any(value < 1 or value > 6 for value in parsed):
+        raise ValueError("경정 선수 번호는 1부터 6까지만 입력하세요.")
+    return parsed
+
+
+def show_kboat_field_prediction():
+    st.title("🚤 경정 현장 예측")
+    st.write("현장에서 확인한 배당률(인기도) 순서대로 선수 번호 5개를 입력하세요.")
+    st.caption("예: 1위 1번, 2위 3번, 3위 2번, 4위 5번, 5위 6번이면 `1,3,2,5,6`")
+
+    db = load_kboat_pattern_db()
+    if db.empty:
+        st.warning("저장된 경정 예측 db가 없습니다. 관리자 업로드 메뉴에서 경정 db 엑셀을 먼저 등록하세요.")
+        return
+
+    st.caption(f"현재 저장된 과거 경정 db: {len(db):,}경주")
+    with st.form("kboat_field_prediction_form"):
+        popularity_text = st.text_input(
+            "인기순위 a1~a5",
+            placeholder="1,3,2,5,6",
+            help="쉼표로 구분하여 입력하세요.",
+            key="kboat_popularity_text",
+        )
+        submitted = st.form_submit_button("경정 예측 결과 보기", use_container_width=True)
+
+    if not submitted:
+        return
+
+    try:
+        inputs = _parse_kboat_popularity_input(popularity_text)
+        result = predict_from_popularity(db, inputs)
+    except Exception as e:
+        st.error(str(e))
+        return
+
+    st.subheader("경정 예측 결과")
+    st.info(result["message"])
+    result_df = result["rows"].copy()
+    result_df.insert(0, "순위", range(1, len(result_df) + 1))
+    result_df["확률"] = result_df["확률"].map(lambda value: f"{value:.2%}")
+    st.dataframe(result_df, hide_index=True, use_container_width=True)
+    st.caption(f"예측 방식: {result['method']} | 정확 빈도: {result['match_count']}건")
+
+
 st.sidebar.title("📌 메뉴")
 
 menu = st.sidebar.selectbox(
     "메뉴 선택",
-    ["🚴 경륜 현장예측", "🏇 경마 현장예측", "🏇 경마", "🚤 경정", "🚴 경륜", "📢 공지사항", "🔑 관리자 업로드"]
+    ["🚴 경륜 현장예측", "🏇 경마 현장예측", "🚤 경정 현장예측", "🏇 경마", "🚤 경정", "🚴 경륜", "📢 공지사항", "🔑 관리자 업로드"]
 )
 
 
@@ -202,6 +255,9 @@ if menu == "🚴 경륜 현장예측":
 
 elif menu == "🏇 경마 현장예측":
     show_kra_field_prediction()
+
+elif menu == "🚤 경정 현장예측":
+    show_kboat_field_prediction()
 
 elif menu == "🏇 경마":
     show_category_page(menu, "경마")
@@ -282,6 +338,28 @@ elif menu == "🔑 관리자 업로드":
                     st.success(f"경마 현장예측 db {saved_rows:,}건 저장 완료!")
                 except Exception as e:
                     st.error("경마 현장예측 db 저장 중 오류가 발생했습니다.")
+                    st.code(str(e))
+
+        st.divider()
+
+        st.subheader("🚤 경정 현장예측 db 등록")
+        st.write("`db` 시트에 `no, a1~a5, n1~n3` 열이 들어 있는 경정 엑셀 파일을 등록하세요.")
+        kboat_pattern_file = st.file_uploader(
+            "경정 예측 db 엑셀 선택",
+            type=["xlsx", "xls"],
+            key="kboat_pattern_db_uploader"
+        )
+        if st.button("경정 현장예측 db 저장", type="primary"):
+            if kboat_pattern_file is None:
+                st.warning("경정 db 엑셀 파일을 선택하세요.")
+            else:
+                try:
+                    kboat_pattern_df = pd.read_excel(kboat_pattern_file, sheet_name="db")
+                    saved_rows = save_kboat_pattern_db(kboat_pattern_df)
+                    load_kboat_pattern_db.clear()
+                    st.success(f"경정 현장예측 db {saved_rows:,}건 저장 완료!")
+                except Exception as e:
+                    st.error("경정 현장예측 db 저장 중 오류가 발생했습니다.")
                     st.code(str(e))
 
         st.divider()
