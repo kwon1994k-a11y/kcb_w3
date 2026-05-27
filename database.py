@@ -16,6 +16,7 @@ SCOPES = [
 DEFAULT_SPREADSHEET_NAME = "\uacbd\ub9c8&\uacbd\ub95c&\uacbd\uc815_\ubd84\uc11d\ud45c"
 DEFAULT_SPREADSHEET_ID = "1-nj7R15nseCyksW8Y2idTUlrkrQwJIlD0D-74Q5oO7o"
 KEIRIN_PATTERN_HEADERS = ["no", "a1", "a2", "a3", "a4", "a5", "n1", "n2", "n3"]
+KRA_PATTERN_HEADERS = ["no", "a1", "a2", "a3", "a4", "a5", "n1", "n2", "n3"]
 
 
 def get_secret_value(key, default=None):
@@ -114,6 +115,12 @@ def init_db():
         KEIRIN_PATTERN_HEADERS
     )
 
+    get_or_create_worksheet(
+        spreadsheet,
+        "kra_pattern_db",
+        KRA_PATTERN_HEADERS
+    )
+
 
 def _next_id(ws):
     records = ws.get_all_records()
@@ -208,6 +215,36 @@ def load_keirin_pattern_db() -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=KEIRIN_PATTERN_HEADERS)
     return df[KEIRIN_PATTERN_HEADERS].copy()
+
+
+def save_kra_pattern_db(df: pd.DataFrame):
+    missing = [col for col in KRA_PATTERN_HEADERS if col not in df.columns]
+    if missing:
+        raise ValueError(f"db 시트에 필요한 열이 없습니다: {missing}")
+
+    clean = df[KRA_PATTERN_HEADERS].dropna(subset=KRA_PATTERN_HEADERS[1:]).copy()
+    for col in KRA_PATTERN_HEADERS:
+        clean[col] = pd.to_numeric(clean[col], errors="coerce")
+    clean = clean.dropna(subset=KRA_PATTERN_HEADERS)
+    clean = clean.astype(int)
+
+    spreadsheet = get_spreadsheet()
+    ws = get_or_create_worksheet(spreadsheet, "kra_pattern_db", KRA_PATTERN_HEADERS)
+    values = [KRA_PATTERN_HEADERS] + clean.values.tolist()
+    ws.clear()
+    ws.update(values, value_input_option="RAW")
+    return len(clean)
+
+
+@st.cache_data(ttl=300)
+def load_kra_pattern_db() -> pd.DataFrame:
+    spreadsheet = get_spreadsheet()
+    ws = get_or_create_worksheet(spreadsheet, "kra_pattern_db", KRA_PATTERN_HEADERS)
+    records = ws.get_all_records()
+    df = pd.DataFrame(records)
+    if df.empty:
+        return pd.DataFrame(columns=KRA_PATTERN_HEADERS)
+    return df[KRA_PATTERN_HEADERS].copy()
 
 
 def load_posts(category: str) -> pd.DataFrame:
