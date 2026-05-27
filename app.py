@@ -11,10 +11,9 @@ from database import (
     load_excel_data,
     load_keirin_pattern_db,
     save_keirin_pattern_db,
-    load_kra_pattern_db,
-    save_kra_pattern_db,
     base64_to_bytes,
 )
+from kra_database import load_kra_pattern_db, save_kra_pattern_db
 from keirin_predictor import predict_from_popularity
 
 
