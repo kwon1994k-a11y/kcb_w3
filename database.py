@@ -1,5 +1,6 @@
 ﻿import base64
 from datetime import datetime
+import time
 
 import gspread
 import pandas as pd
@@ -60,8 +61,21 @@ def get_or_create_worksheet(spreadsheet, title, headers):
     try:
         ws = spreadsheet.worksheet(title)
     except gspread.WorksheetNotFound:
-        ws = spreadsheet.add_worksheet(title=title, rows=1000, cols=len(headers))
-        ws.append_row(headers)
+        try:
+            ws = spreadsheet.add_worksheet(title=title, rows=1000, cols=len(headers))
+            ws.append_row(headers)
+        except gspread.exceptions.APIError as e:
+            # Concurrent Streamlit reruns can attempt to create the same sheet.
+            if "already" not in str(e).lower() or "sheet" not in str(e).lower():
+                raise
+            for _ in range(3):
+                try:
+                    ws = spreadsheet.worksheet(title)
+                    break
+                except gspread.WorksheetNotFound:
+                    time.sleep(0.5)
+            else:
+                raise
 
     values = ws.get_all_values()
     if not values:
